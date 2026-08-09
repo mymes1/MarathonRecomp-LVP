@@ -1,11 +1,6 @@
 name: validate
 on:
   workflow_call:
-    secrets:
-      ASSET_REPO:
-        required: true
-      ASSET_REPO_TOKEN:
-        required: true
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,13 +21,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Checkout Private Repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ secrets.ASSET_REPO }}
-          token: ${{ secrets.ASSET_REPO_TOKEN }}
-          path: ./private
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -171,13 +159,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Checkout Private Repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ secrets.ASSET_REPO }}
-          token: ${{ secrets.ASSET_REPO_TOKEN }}
-          path: ./private
-
       - name: Install Dependencies
         run: |-
           sudo apt update
@@ -225,13 +206,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Checkout Private Repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ secrets.ASSET_REPO }}
-          token: ${{ secrets.ASSET_REPO_TOKEN }}
-          path: ./private
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
