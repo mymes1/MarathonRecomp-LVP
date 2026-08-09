@@ -35,23 +35,12 @@ jobs:
         run: |
           set -e
 
-          if [ ! -d "./private" ]; then
-            echo "::error::private folder was not found."
+          if [ ! -d "./MarathonRecompLib/private" ]; then
+            echo "::error::MarathonRecompLib/private was not found."
             exit 1
           fi
 
-          echo "Private game files:"
-          find ./private -maxdepth 2 -type f -print
-
-      - name: Prepare Project
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p ./MarathonRecompLib/private
-          cp -a ./private/. ./MarathonRecompLib/private/
-
-          echo "Prepared game files:"
+          echo "Game files found in MarathonRecompLib/private:"
           find ./MarathonRecompLib/private -maxdepth 2 -type f -print
 
       - name: Setup ccache
@@ -135,34 +124,16 @@ jobs:
       - name: Verify game files
         shell: pwsh
         run: |
-          if (-not (Test-Path ".\private")) {
-            Write-Error "private folder was not found."
+          if (-not (Test-Path ".\MarathonRecompLib\private")) {
+            Write-Error "MarathonRecompLib\private was not found."
             exit 1
           }
 
-          Write-Host "Private game files:"
-          Get-ChildItem ".\private" -Recurse -File | ForEach-Object {
-            Write-Host $_.FullName
-          }
-
-      - name: Prepare Project
-        shell: pwsh
-        run: |
-          $commitMessage = git log -1 --pretty=%s
-          "commit_message=$commitMessage" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-          New-Item -ItemType Directory -Force -Path ".\MarathonRecompLib\private" | Out-Null
-
-          Copy-Item `
-            -Path ".\private\*" `
-            -Destination ".\MarathonRecompLib\private" `
-            -Recurse `
-            -Force
-
-          Write-Host "Prepared game files:"
-          Get-ChildItem ".\MarathonRecompLib\private" -Recurse -File | ForEach-Object {
-            Write-Host $_.FullName
-          }
+          Write-Host "Game files found in MarathonRecompLib\private:"
+          Get-ChildItem ".\MarathonRecompLib\private" -Recurse -File |
+            ForEach-Object {
+              Write-Host $_.FullName
+            }
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -271,20 +242,12 @@ jobs:
         run: |
           set -e
 
-          if [ ! -d "./private" ]; then
-            echo "::error::private folder was not found."
+          if [ ! -d "./MarathonRecompLib/private" ]; then
+            echo "::error::MarathonRecompLib/private was not found."
             exit 1
           fi
 
-          find ./private -maxdepth 2 -type f -print
-
-      - name: Prepare Project
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p ./MarathonRecompLib/private
-          cp -a ./private/. ./MarathonRecompLib/private/
+          find ./MarathonRecompLib/private -maxdepth 2 -type f -print
 
       - name: Install Dependencies
         run: |
@@ -368,20 +331,12 @@ jobs:
         run: |
           set -e
 
-          if [ ! -d "./private" ]; then
-            echo "::error::private folder was not found."
+          if [ ! -d "./MarathonRecompLib/private" ]; then
+            echo "::error::MarathonRecompLib/private was not found."
             exit 1
           fi
 
-          find ./private -maxdepth 2 -type f -print
-
-      - name: Prepare Project
-        shell: bash
-        run: |
-          set -e
-
-          mkdir -p ./MarathonRecompLib/private
-          cp -a ./private/. ./MarathonRecompLib/private/
+          find ./MarathonRecompLib/private -maxdepth 2 -type f -print
 
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
