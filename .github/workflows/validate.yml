@@ -1,7 +1,10 @@
 name: validateorbuild
 
 on:
-  workflow_call:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -13,6 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
 
     strategy:
+      fail-fast: false
       matrix:
         preset:
           - linux-debug
@@ -30,6 +34,23 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Initialize and verify submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+
+          echo "=== Submodules ==="
+          git submodule status --recursive
+
+          echo "=== Checking vcpkg ==="
+          test -f "./thirdparty/vcpkg/scripts/buildsystems/vcpkg.cmake"
+
+          echo "vcpkg toolchain found:"
+          realpath "./thirdparty/vcpkg/scripts/buildsystems/vcpkg.cmake"
+
       - name: Verify game files
         shell: bash
         run: |
@@ -40,7 +61,7 @@ jobs:
             exit 1
           fi
 
-          echo "Game files found in MarathonRecompLib/private:"
+          echo "Game files found:"
           find ./MarathonRecompLib/private -maxdepth 2 -type f -print
 
       - name: Setup ccache
@@ -59,8 +80,12 @@ jobs:
             vcpkg-${{ runner.os }}-
 
       - name: Install Dependencies
+        shell: bash
         run: |
+          set -euxo pipefail
+
           sudo apt update
+
           sudo apt install -y \
             ninja-build \
             llvm-${{ env.LLVM_VERSION }}-dev \
@@ -69,16 +94,28 @@ jobs:
             libpulse-dev \
             libpipewire-0.3-dev
 
-      - name: Cache ccache Directory
-        uses: actions/cache@v4
-        with:
-          path: /tmp/ccache
-          key: ccache-${{ runner.os }}-${{ matrix.preset }}
+          echo "=== Ninja ==="
+          ninja --version
+
+          echo "=== CMake ==="
+          cmake --version
+
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          ./thirdparty/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+
+          ./thirdparty/vcpkg/vcpkg version
 
       - name: Configure Project
         env:
           CCACHE_DIR: /tmp/ccache
+        shell: bash
         run: |
+          set -euxo pipefail
+
           cmake . \
             --preset "${{ env.CMAKE_PRESET }}" \
             -DSDL2MIXER_VORBIS=VORBISFILE \
@@ -88,7 +125,10 @@ jobs:
       - name: Build Project
         env:
           CCACHE_DIR: /tmp/ccache
+        shell: bash
         run: |
+          set -euxo pipefail
+
           cmake --build "./out/build/${{ env.CMAKE_PRESET }}" \
             --target MarathonRecomp \
             --parallel 2
@@ -124,15 +164,61 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Initialize Git submodules
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+
+          Write-Host "=== Submodule status ==="
+          git submodule status --recursive
+
+      - name: Verify vcpkg toolchain
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $vcpkgToolchain = Join-Path $PWD "thirdparty\vcpkg\scripts\buildsystems\vcpkg.cmake"
+
+          Write-Host "Checking:"
+          Write-Host $vcpkgToolchain
+
+          if (-not (Test-Path -LiteralPath $vcpkgToolchain -PathType Leaf)) {
+            Write-Error "vcpkg toolchain was not found: $vcpkgToolchain"
+
+            Write-Host ""
+            Write-Host "=== thirdparty directory ==="
+
+            if (Test-Path ".\thirdparty") {
+              Get-ChildItem ".\thirdparty" -Force
+            }
+
+            Write-Host ""
+            Write-Host "=== vcpkg directory ==="
+
+            if (Test-Path ".\thirdparty\vcpkg") {
+              Get-ChildItem ".\thirdparty\vcpkg" -Force
+            }
+
+            exit 1
+          }
+
+          Write-Host "vcpkg toolchain found:"
+          Write-Host (Resolve-Path $vcpkgToolchain)
+
       - name: Verify game files
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
           if (-not (Test-Path ".\MarathonRecompLib\private")) {
             Write-Error "MarathonRecompLib\private was not found."
             exit 1
           }
 
-          Write-Host "Game files found in MarathonRecompLib\private:"
+          Write-Host "Game files found:"
           Get-ChildItem ".\MarathonRecompLib\private" -Recurse -File |
             ForEach-Object {
               Write-Host $_.FullName
@@ -153,55 +239,141 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-
 
-      - name: Install Dependencies
+      - name: Install Ninja
         shell: pwsh
         run: |
-          choco install ninja -y
+          $ErrorActionPreference = "Stop"
 
-          Remove-Item `
-            -Path "C:\ProgramData\Chocolatey\bin\ccache.exe" `
-            -Force `
-            -ErrorAction SilentlyContinue
+          choco install ninja -y --no-progress
+
+          $chocoBin = "C:\ProgramData\chocolatey\bin"
+
+          if (Test-Path $chocoBin) {
+            Add-Content `
+              -Path $env:GITHUB_PATH `
+              -Value $chocoBin
+
+            $env:Path = "$chocoBin;$env:Path"
+          }
+
+          Write-Host "=== Ninja location ==="
+          where.exe ninja
+
+          Write-Host "=== Ninja version ==="
+          ninja --version
 
       - name: Configure Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $vcpkg = Join-Path $PWD "thirdparty\vcpkg"
+
+          $bootstrap = Join-Path $vcpkg "bootstrap-vcpkg.bat"
+
+          if (-not (Test-Path $bootstrap)) {
+            Write-Error "vcpkg bootstrap script was not found: $bootstrap"
+            exit 1
+          }
+
+          & $bootstrap -disableMetrics
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "vcpkg bootstrap failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+
+          & (Join-Path $vcpkg "vcpkg.exe") version
+
       - name: Configure Project
         shell: pwsh
         run: |
-          $buildDir = ".\out\build\${{ env.CMAKE_PRESET }}"
+          $ErrorActionPreference = "Stop"
 
-          # Remove this preset's generated build directory.
-          # This prevents an old CMake cache from selecting another renderer.
+          $preset = "${{ env.CMAKE_PRESET }}"
+          $buildDir = Join-Path $PWD "out\build\$preset"
+
+          Write-Host "=== Working directory ==="
+          Write-Host $PWD
+
+          Write-Host "=== Preset ==="
+          Write-Host $preset
+
+          Write-Host "=== Ninja ==="
+          where.exe ninja
+          ninja --version
+
+          Write-Host "=== vcpkg toolchain ==="
+          $vcpkgToolchain = Join-Path $PWD "thirdparty\vcpkg\scripts\buildsystems\vcpkg.cmake"
+          Write-Host (Resolve-Path $vcpkgToolchain)
+
+          # Completely remove this preset's previous CMake state.
           if (Test-Path $buildDir) {
-            Remove-Item -Recurse -Force $buildDir
+            Write-Host "Removing old build directory:"
+            Write-Host $buildDir
+
+            Remove-Item `
+              -Path $buildDir `
+              -Recurse `
+              -Force
           }
 
+          New-Item `
+            -ItemType Directory `
+            -Path $buildDir `
+            -Force |
+            Out-Null
+
           cmake . `
-            --preset "${{ env.CMAKE_PRESET }}" `
+            --preset "$preset" `
             -DMARATHON_RECOMP_D3D12=ON `
             -DMARATHON_RECOMP_METAL=OFF `
             -DSDL2MIXER_VORBIS=VORBISFILE `
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
             -DCMAKE_C_COMPILER_LAUNCHER=ccache
 
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          Write-Host ""
           Write-Host "=== Renderer configuration ==="
 
-          Get-Content "$buildDir\CMakeCache.txt" |
-            Select-String "MARATHON_RECOMP_D3D12|MARATHON_RECOMP_METAL"
+          $cacheFile = Join-Path $buildDir "CMakeCache.txt"
+
+          if (-not (Test-Path $cacheFile)) {
+            Write-Error "CMakeCache.txt was not generated."
+            exit 1
+          }
+
+          Get-Content $cacheFile |
+            Select-String "MARATHON_RECOMP_D3D12|MARATHON_RECOMP_METAL|CMAKE_TOOLCHAIN_FILE"
 
       - name: Build Project
         shell: pwsh
         run: |
-          cmake --build ".\out\build\${{ env.CMAKE_PRESET }}" `
+          $ErrorActionPreference = "Stop"
+
+          $buildDir = ".\out\build\${{ env.CMAKE_PRESET }}"
+
+          cmake --build $buildDir `
             --target MarathonRecomp `
             --parallel 2
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
 
       - name: Verify D3D12 Build
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
+
           $build = ".\out\build\${{ env.CMAKE_PRESET }}\MarathonRecomp"
 
           $required = @(
@@ -223,42 +395,46 @@ jobs:
       - name: Pack Release
         shell: pwsh
         run: |
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path ".\release" |
-            Out-Null
+          $ErrorActionPreference = "Stop"
 
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path ".\release\D3D12" |
-            Out-Null
-
+          $release = ".\release"
+          $d3d12Release = ".\release\D3D12"
           $build = ".\out\build\${{ env.CMAKE_PRESET }}\MarathonRecomp"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $release |
+            Out-Null
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $d3d12Release |
+            Out-Null
 
           Copy-Item `
             "$build\D3D12\D3D12Core.dll" `
-            ".\release\D3D12\D3D12Core.dll" `
+            "$d3d12Release\D3D12Core.dll" `
             -Force
 
           Copy-Item `
             "$build\dxcompiler.dll" `
-            ".\release\dxcompiler.dll" `
+            "$release\dxcompiler.dll" `
             -Force
 
           Copy-Item `
             "$build\dxil.dll" `
-            ".\release\dxil.dll" `
+            "$release\dxil.dll" `
             -Force
 
           Copy-Item `
             "$build\MarathonRecomp.exe" `
-            ".\release\MarathonRecomp.exe" `
+            "$release\MarathonRecomp.exe" `
             -Force
 
           Write-Host "=== Windows package ==="
-          Get-ChildItem ".\release" -Recurse
+          Get-ChildItem $release -Recurse
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -290,6 +466,14 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Initialize submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
+
       - name: Verify game files
         shell: bash
         run: |
@@ -303,6 +487,7 @@ jobs:
           find ./MarathonRecompLib/private -maxdepth 2 -type f -print
 
       - name: Install Dependencies
+        shell: bash
         run: |
           sudo apt update
           sudo apt install -y flatpak-builder ccache
@@ -314,7 +499,10 @@ jobs:
           key: ccache-${{ runner.os }}
 
       - name: Prepare Flatpak
+        shell: bash
         run: |
+          set -euxo pipefail
+
           flatpak --user remote-add \
             --if-not-exists \
             flathub \
@@ -329,7 +517,10 @@ jobs:
             org.freedesktop.Sdk.Extension.llvm${{ env.LLVM_VERSION }}//${{ env.FREEDESKTOP_VERSION }}
 
       - name: Build Flatpak
+        shell: bash
         run: |
+          set -euxo pipefail
+
           echo "commit_message=$(git log -1 --pretty=%s)" >> "$GITHUB_ENV"
 
           export CCACHE_DIR=/tmp/ccache
@@ -361,6 +552,7 @@ jobs:
     runs-on: macos-15
 
     strategy:
+      fail-fast: false
       matrix:
         arch:
           - arm64
@@ -378,6 +570,14 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+
+      - name: Initialize submodules
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git submodule sync --recursive
+          git submodule update --init --recursive --force
 
       - name: Verify game files
         shell: bash
@@ -407,6 +607,7 @@ jobs:
             vcpkg-${{ runner.os }}-${{ matrix.arch }}-
 
       - name: Install Dependencies
+        shell: bash
         run: |
           brew install ninja
 
@@ -419,7 +620,10 @@ jobs:
       - name: Configure Project
         env:
           CCACHE_DIR: /tmp/ccache
+        shell: bash
         run: |
+          set -euxo pipefail
+
           cmake . \
             --preset "${{ env.CMAKE_PRESET }}" \
             -DCMAKE_OSX_ARCHITECTURES="${{ matrix.arch }}" \
@@ -430,13 +634,19 @@ jobs:
       - name: Build Project
         env:
           CCACHE_DIR: /tmp/ccache
+        shell: bash
         run: |
+          set -euxo pipefail
+
           cmake --build "./out/build/${{ env.CMAKE_PRESET }}" \
             --target MarathonRecomp \
             --parallel 2
 
       - name: Pack Release
+        shell: bash
         run: |
+          set -euxo pipefail
+
           codesign --deep -fs - \
             "./out/build/${{ env.CMAKE_PRESET }}/Marathon Recompiled.app"
 
