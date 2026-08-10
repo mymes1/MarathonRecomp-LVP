@@ -337,10 +337,12 @@ static Profiler g_swapChainAcquireProfiler;
 static bool g_profilerVisible;
 static bool g_profilerWasToggled;
 
-#if !defined(MARATHON_RECOMP_D3D12) && !defined(MARATHON_RECOMP_METAL)
-static constexpr Backend g_backend = Backend::VULKAN;
+#ifdef MARATHON_RECOMP_D3D12
+static constexpr Backend g_backend = Backend::D3D12;
+#elif defined(MARATHON_RECOMP_METAL)
+static constexpr Backend g_backend = Backend::METAL;
 #else
-static Backend g_backend;
+static constexpr Backend g_backend = Backend::VULKAN;
 #endif
 
 static bool g_triangleStripWorkaround = false;
