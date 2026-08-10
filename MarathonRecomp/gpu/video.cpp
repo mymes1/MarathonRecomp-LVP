@@ -338,7 +338,7 @@ static bool g_profilerVisible;
 static bool g_profilerWasToggled;
 
 #ifdef MARATHON_RECOMP_D3D12
-static constexpr Backend g_backend = Backend::D3D12;
+static Backend g_backend = Backend::D3D12;
 #elif defined(MARATHON_RECOMP_METAL)
 static constexpr Backend g_backend = Backend::METAL;
 #else
