@@ -1,4 +1,4 @@
-name: validate
+name: validateorbuild
 
 on:
   workflow_call:
