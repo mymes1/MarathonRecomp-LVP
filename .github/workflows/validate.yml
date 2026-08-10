@@ -113,6 +113,8 @@ jobs:
 
     env:
       CMAKE_PRESET: ${{ matrix.preset }}
+      MARATHON_RECOMP_D3D12: "ON"
+      MARATHON_RECOMP_METAL: "OFF"
 
     steps:
       - name: Checkout Repository
@@ -166,18 +168,53 @@ jobs:
           arch: x64
 
       - name: Configure Project
+        shell: pwsh
         run: |
+          $buildDir = ".\out\build\${{ env.CMAKE_PRESET }}"
+
+          # Remove only this preset's generated build directory so an old
+          # Vulkan/CMake cache cannot override the renderer selection.
+          if (Test-Path $buildDir) {
+            Remove-Item -Recurse -Force $buildDir
+          }
+
           cmake . `
             --preset "${{ env.CMAKE_PRESET }}" `
+            -DMARATHON_RECOMP_D3D12=ON `
+            -DMARATHON_RECOMP_METAL=OFF `
             -DSDL2MIXER_VORBIS=VORBISFILE `
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
             -DCMAKE_C_COMPILER_LAUNCHER=ccache
+
+          Write-Host "=== Renderer configuration ==="
+          Get-Content "$buildDir\CMakeCache.txt" |
+            Select-String "MARATHON_RECOMP_D3D12|MARATHON_RECOMP_METAL"
 
       - name: Build Project
         run: |
           cmake --build ".\out\build\${{ env.CMAKE_PRESET }}" `
             --target MarathonRecomp `
             --parallel
+
+      - name: Verify D3D12 Build
+        shell: pwsh
+        run: |
+          $build = ".\out\build\${{ env.CMAKE_PRESET }}\MarathonRecomp"
+
+          $required = @(
+            "$build\MarathonRecomp.exe",
+            "$build\D3D12\D3D12Core.dll",
+            "$build\dxcompiler.dll",
+            "$build\dxil.dll"
+          )
+
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) {
+              Write-Error "Required D3D12 build file is missing: $file"
+              exit 1
+            }
+            Write-Host "Found: $file"
+          }
 
       - name: Pack Release
         shell: pwsh
